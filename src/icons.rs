@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Original distro-inspired symbolic artwork, not official or approved logos.
+//! Embedded distro artwork; the Fedora logo retains its original colors.
 
 use cosmic::widget::icon::{self, Handle};
 
 pub fn for_distro(id: &str, id_like: &[String]) -> Handle {
-    icon::from_svg_bytes(selected_bytes(id, id_like)).symbolic(true)
+    let (bytes, symbolic) = selected_icon(id, id_like);
+    icon::from_svg_bytes(bytes).symbolic(symbolic)
 }
 
-fn selected_bytes(id: &str, id_like: &[String]) -> &'static [u8] {
-    distro_bytes(id)
-        .or_else(|| id_like.iter().find_map(|family| distro_bytes(family)))
-        .unwrap_or(include_bytes!("../resources/icon.svg"))
+fn selected_icon(id: &str, id_like: &[String]) -> (&'static [u8], bool) {
+    distro_icon(id)
+        .or_else(|| id_like.iter().find_map(|family| distro_icon(family)))
+        .unwrap_or((include_bytes!("../resources/icon.svg"), true))
 }
 
-fn distro_bytes(id: &str) -> Option<&'static [u8]> {
-    Some(match id {
+fn distro_icon(id: &str) -> Option<(&'static [u8], bool)> {
+    let bytes: &'static [u8] = match id {
         "fedora" => include_bytes!("../resources/icons/fedora.svg"),
         "ubuntu" => include_bytes!("../resources/icons/ubuntu.svg"),
         "arch" | "archlinux" => include_bytes!("../resources/icons/arch.svg"),
@@ -49,17 +50,19 @@ fn distro_bytes(id: &str) -> Option<&'static [u8]> {
         "bluefin" => include_bytes!("../resources/icons/bluefin.svg"),
         "aurora" => include_bytes!("../resources/icons/aurora.svg"),
         _ => return None,
-    })
+    };
+    // Symbolic recoloring would flatten Fedora's blue badge and white mark.
+    Some((bytes, id != "fedora"))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::selected_bytes;
+    use super::selected_icon;
 
     #[test]
     fn exact_derivative_takes_precedence_over_family() {
         assert_eq!(
-            selected_bytes("linuxmint", &["ubuntu".into(), "debian".into()]),
+            selected_icon("linuxmint", &["ubuntu".into(), "debian".into()]).0,
             include_bytes!("../resources/icons/mint.svg").as_slice(),
         );
     }
@@ -67,10 +70,11 @@ mod tests {
     #[test]
     fn first_known_family_wins_in_declared_order() {
         assert_eq!(
-            selected_bytes(
+            selected_icon(
                 "custom",
                 &["unknown".into(), "ubuntu".into(), "debian".into()]
-            ),
+            )
+            .0,
             include_bytes!("../resources/icons/ubuntu.svg").as_slice(),
         );
     }
@@ -78,7 +82,7 @@ mod tests {
     #[test]
     fn completely_unknown_distribution_uses_update_icon() {
         assert_eq!(
-            selected_bytes("custom", &["linux".into()]),
+            selected_icon("custom", &["linux".into()]).0,
             include_bytes!("../resources/icon.svg").as_slice(),
         );
     }

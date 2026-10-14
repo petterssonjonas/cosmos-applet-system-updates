@@ -23,7 +23,7 @@ Selection uses `/etc/os-release` (`/usr/lib/os-release` as fallback), `ID_LIKE`,
 
 ### Requirements and limitations
 
-- **DNF5:** requires a version supporting JSON output for `check-update`. DNF-family checks reuse the native configured user cache and its existing repository trust; they do not silently approve new signing keys. If a repository needs initial trust approval, the error explains how to review its fingerprint in an ordinary-user terminal metadata check. Signature verification is not disabled.
+- **DNF5:** requires a version supporting JSON output for `check-update`. JSON mode can return exit status 0 even when updates exist, so the structured package data determines the result. Packages repeated in upgrades and obsoleting sections are counted once; nested obsoleted packages are not additional updates. Legacy DNF/Yum text checks retain their 0/100 consistency checks. DNF-family checks reuse the native configured user cache and its existing repository trust; they do not silently approve new signing keys. If a repository needs initial trust approval, the error explains how to review its fingerprint in an ordinary-user terminal metadata check. Signature verification is not disabled.
 - **APT:** requires `apt-get` with `--error-on=any` and `apt`. The private check clears update hooks so system maintenance hooks are not run from an unprivileged scan. Repository authentication remains enabled.
 - **Arch:** install `pacman-contrib` (`checkupdates`), `fakeroot`, and `pacman-conf`. The applet does not install these automatically or refresh the live pacman database without upgrading. AUR development-package checks follow the selected helper's configuration.
 - **Zypper/APK:** need readable package-manager configuration and installed-package state. Copies are bounded to 512 MiB and discarded after the scan. These private checks can require more I/O than managers with native nonroot metadata support.
@@ -36,9 +36,9 @@ Selection uses `/etc/os-release` (`/usr/lib/os-release` as fallback), `ID_LIKE`,
 
 ## Icons
 
-Includes **28 original, distro-inspired symbolic SVGs**: Fedora, Ubuntu, Arch, Debian, Pop!_OS, Mint, openSUSE, Manjaro, EndeavourOS, Garuda, CachyOS, Zorin, elementary, Kali, RHEL, Rocky, AlmaLinux, CentOS, Alpine, Void, Solus, NixOS, Gentoo, Mageia, Fedora Atomic, Bazzite, Bluefin and Aurora. Related variants share their family's artwork. Unknown derivatives use the first recognized `ID_LIKE` family; entirely unknown systems use a generic update icon.
+Includes **28 distro SVGs**: Fedora, Ubuntu, Arch, Debian, Pop!_OS, Mint, openSUSE, Manjaro, EndeavourOS, Garuda, CachyOS, Zorin, elementary, Kali, RHEL, Rocky, AlmaLinux, CentOS, Alpine, Void, Solus, NixOS, Gentoo, Mageia, Fedora Atomic, Bazzite, Bluefin and Aurora. Related variants share their family's artwork. Unknown derivatives use the first recognized `ID_LIKE` family; entirely unknown systems use a generic update icon.
 
-The SVGs are embedded, use native theme tinting, and require no special fonts. These are original interpretations, not official or trademark-approved distro logos. An icon identifies the distribution; it does not imply that every distribution's update mechanism is supported.
+The SVGs are embedded and require no special fonts. Fedora uses the recognizable blue badge and white Fedora mark from [System76's Pop icon theme](https://github.com/pop-os/icon-theme), retaining its original colors rather than applying symbolic recoloring. `resources/icons/fedora.svg` is the unmodified 24-pixel `fedora-logo-icon.svg` artwork, distributed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) by the Pop icon theme contributors; [upstream license](https://github.com/pop-os/icon-theme/blob/master/LICENSE). Fedora's name and logo remain trademarks of their respective owners; no endorsement is implied. The other 27 icons are original distro-inspired symbolic artwork using native theme tinting. An icon identifies the distribution; it does not imply that every distribution's update mechanism is supported.
 
 ## Build and install
 
@@ -72,4 +72,4 @@ Supported terminal preference: COSMIC Terminal, GNOME Console, GNOME Terminal, K
 - Zypper, APK and eopkg private snapshots are temporary. Update-runner locking uses the private user runtime directory. No packages are downloaded or installed by the applet's checking code.
 - Update results remain in memory. Restarting the applet performs a fresh check.
 
-Code and original artwork: MPL-2.0; see `LICENSE`.
+Code and original artwork: MPL-2.0; see `LICENSE`. The bundled Fedora logo is separately licensed CC BY-SA 4.0, as attributed above.

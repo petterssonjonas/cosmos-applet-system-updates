@@ -2,7 +2,7 @@
 name = "cosmic-applet-system-updates"
 version = "0.1.0"
 edition = "2024"
-license = "MPL-2.0"
+license = "MPL-2.0 AND CC-BY-SA-4.0"
 description = "Distribution-aware system updates applet for the COSMIC panel"
 
 [dependencies]

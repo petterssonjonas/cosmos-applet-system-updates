@@ -4,7 +4,7 @@ use crate::model::{
     Backend, Distribution, PackageUpdate, System, UpdateCommand, UpdatePlan, UpdateReport,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs, io,
     os::{
         fd::{AsRawFd, FromRawFd},
@@ -690,20 +690,8 @@ async fn check_dnf(backend: Backend) -> Result<UpdateReport, String> {
     if backend == Backend::Dnf5 {
         args.push("--json");
     }
-    let output = run(backend.id(), &args, &[], &[0, 100])
-        .await
-        .map_err(|error| dnf_check_error(backend, error))?;
-    let mut packages = if backend == Backend::Dnf5 {
-        parse_dnf5(&output.stdout)?
-    } else {
-        parse_dnf(&output.stdout)
-    };
-    if output.code == 100 && packages.is_empty() {
-        return Err("DNF reported updates, but its package output could not be parsed".into());
-    }
-    if output.code == 0 && !packages.is_empty() {
-        return Err("DNF returned an inconsistent update status".into());
-    }
+    let mut packages =
+        interpret_dnf_check(backend, run(backend.id(), &args, &[], &[0, 100]).await)?;
     if !packages.is_empty() {
         let installed = run(
             "rpm",
@@ -731,6 +719,25 @@ async fn check_dnf(backend: Backend) -> Result<UpdateReport, String> {
         packages,
         note: None,
     })
+}
+
+fn interpret_dnf_check(
+    backend: Backend,
+    result: Result<Captured, String>,
+) -> Result<Vec<PackageUpdate>, String> {
+    let output = result.map_err(|error| dnf_check_error(backend, error))?;
+    if backend == Backend::Dnf5 {
+        // DNF5 prints JSON and returns before its text-mode exit-100 branch.
+        return parse_dnf5(&output.stdout);
+    }
+    let packages = parse_dnf(&output.stdout);
+    if output.code == 100 && packages.is_empty() {
+        return Err("DNF reported updates, but its package output could not be parsed".into());
+    }
+    if output.code == 0 && !packages.is_empty() {
+        return Err("DNF returned an inconsistent update status".into());
+    }
+    Ok(packages)
 }
 
 fn dnf_check_error(backend: Backend, error: String) -> String {
@@ -799,7 +806,11 @@ fn parse_dnf5(text: &str) -> Result<Vec<PackageUpdate>, String> {
         .as_object()
         .ok_or("DNF5 update JSON is not an object")?;
     let mut packages = Vec::new();
-    for rows in sections.values() {
+    let mut seen = HashSet::new();
+    for (section, rows) in sections {
+        if !matches!(section.as_str(), "upgrades" | "obsoleting_packages") {
+            return Err(format!("Unknown DNF5 update section: {section}"));
+        }
         for row in rows
             .as_array()
             .ok_or("DNF5 update section is not an array")?
@@ -815,6 +826,10 @@ fn parse_dnf5(text: &str) -> Result<Vec<PackageUpdate>, String> {
             let source = field("repository")?;
             if !package_name(name) || !package_name(arch) || !version(available) {
                 return Err("Invalid DNF5 package data".into());
+            }
+            // Only top-level available rows count; nested obsoletes are installed packages.
+            if !seen.insert((name, arch, available, source)) {
+                continue;
             }
             packages.push(package(
                 &format!("{name}.{arch}"),
@@ -1432,6 +1447,27 @@ mod tests {
         }
     }
 
+    const DNF5_UPGRADE_JSON: &str = r#"{
+        "upgrades": [
+            {"name":"bash","arch":"x86_64","evr":"5.3-1.fc44","repository":"updates"}
+        ]
+    }"#;
+
+    fn dnf_check_output(
+        backend: Backend,
+        code: i32,
+        stdout: &str,
+        stderr: &str,
+    ) -> Result<Vec<PackageUpdate>, String> {
+        let output = Captured {
+            code,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+        };
+        let result = validate_status(backend.id(), &output, &[0, 100]).map(|()| output);
+        interpret_dnf_check(backend, result)
+    }
+
     #[test]
     fn os_release_quotes_do_not_execute_or_expand() {
         let release = parse_os_release(
@@ -1504,19 +1540,13 @@ PRETTY_NAME="$(touch /tmp/never) `id` \"quoted\""
         );
     }
     #[test]
-    fn native_dnf_100_is_success() {
-        assert!(
-            validate_status(
-                "dnf5",
-                &Captured {
-                    code: 100,
-                    stdout: "bash.x86_64 5.3-1 updates".into(),
-                    stderr: String::new()
-                },
-                &[0, 100]
-            )
-            .is_ok()
-        );
+    fn legacy_dnf_exit_100_reports_updates() {
+        for backend in [Backend::Dnf, Backend::Yum] {
+            assert_eq!(
+                dnf_check_output(backend, 100, "bash.x86_64 5.3-1.fc44 updates\n", "").unwrap(),
+                vec![package("bash.x86_64", None, "5.3-1.fc44", Some("updates"))]
+            );
+        }
     }
     #[test]
     fn native_checkupdates_2_is_empty_success() {
@@ -1641,8 +1671,122 @@ PRETTY_NAME="$(touch /tmp/never) `id` \"quoted\""
         assert_eq!(parse_dnf("Updating repositories:\nLast metadata expiration check: 0:02:30 ago\nName Arch Version Repository\nbash.x86_64 5.3-1.fc44 updates\n").len(), 1);
     }
     #[test]
-    fn dnf5_json_reads_native_sections() {
-        assert_eq!(parse_dnf5(r#"{"upgrades":[{"name":"bash","arch":"x86_64","evr":"5.3-1.fc44","repository":"updates"}]}"#).unwrap(), vec![package("bash.x86_64", None, "5.3-1.fc44", Some("updates"))]);
+    fn dnf5_json_exit_zero_reports_updates() {
+        assert_eq!(
+            dnf_check_output(Backend::Dnf5, 0, DNF5_UPGRADE_JSON, "").unwrap(),
+            vec![package("bash.x86_64", None, "5.3-1.fc44", Some("updates"))]
+        );
+    }
+    #[test]
+    fn dnf5_empty_json_is_success_for_either_accepted_status() {
+        for code in [0, 100] {
+            for json in ["{}", r#"{"upgrades":[],"obsoleting_packages":[]}"#] {
+                assert!(
+                    dnf_check_output(Backend::Dnf5, code, json, "")
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+        }
+    }
+    #[test]
+    fn dnf5_malformed_json_remains_error() {
+        for json in [
+            r#"{"upgrades":[}"#,
+            "[]",
+            r#"{"upgrades":{}}"#,
+            r#"{"upgrades":[{"name":"bash","arch":"x86_64","repository":"updates"}]}"#,
+            r#"{"installed":[]}"#,
+        ] {
+            assert!(
+                dnf_check_output(Backend::Dnf5, 0, json, "").is_err(),
+                "{json}"
+            );
+        }
+    }
+    #[test]
+    fn dnf5_nonzero_failure_remains_error_despite_valid_json() {
+        assert_eq!(
+            dnf_check_output(
+                Backend::Dnf5,
+                1,
+                DNF5_UPGRADE_JSON,
+                "Cannot contact updates repository"
+            )
+            .unwrap_err(),
+            "dnf5 check failed (exit 1): Cannot contact updates repository"
+        );
+    }
+    #[test]
+    fn dnf5_metadata_failure_remains_error_with_zero_exit() {
+        assert_eq!(
+            dnf_check_output(
+                Backend::Dnf5,
+                0,
+                DNF5_UPGRADE_JSON,
+                "Failed to download metadata for repository 'updates'"
+            )
+            .unwrap_err(),
+            "dnf5 check failed (exit 0): Failed to download metadata for repository 'updates'"
+        );
+    }
+    #[test]
+    fn dnf5_duplicate_sections_count_available_package_once() {
+        let json = r#"{
+            "upgrades": [
+                {"name":"bash","arch":"x86_64","evr":"5.3-1.fc44","repository":"updates"}
+            ],
+            "obsoleting_packages": [
+                {"name":"bash","arch":"x86_64","evr":"5.3-1.fc44","repository":"updates",
+                 "obsoletes":[
+                    {"name":"bash-legacy","arch":"x86_64","evr":"5.2-1.fc44","repository":"fedora"}
+                 ]}
+            ]
+        }"#;
+        assert_eq!(
+            dnf_check_output(Backend::Dnf5, 0, json, "").unwrap(),
+            vec![package("bash.x86_64", None, "5.3-1.fc44", Some("updates"))]
+        );
+    }
+    #[test]
+    fn dnf5_packages_with_different_architectures_remain_distinct() {
+        let json = r#"{
+            "upgrades": [
+                {"name":"glibc","arch":"x86_64","evr":"2.43-2.fc44","repository":"updates"},
+                {"name":"glibc","arch":"i686","evr":"2.43-2.fc44","repository":"updates"}
+            ]
+        }"#;
+        assert_eq!(
+            dnf_check_output(Backend::Dnf5, 0, json, "").unwrap(),
+            vec![
+                package("glibc.x86_64", None, "2.43-2.fc44", Some("updates")),
+                package("glibc.i686", None, "2.43-2.fc44", Some("updates"))
+            ]
+        );
+    }
+    #[test]
+    fn legacy_dnf_exit_zero_with_packages_remains_inconsistent() {
+        for backend in [Backend::Dnf, Backend::Yum] {
+            assert_eq!(
+                dnf_check_output(backend, 0, "bash.x86_64 5.3-1.fc44 updates\n", "").unwrap_err(),
+                "DNF returned an inconsistent update status"
+            );
+        }
+    }
+    #[test]
+    fn legacy_dnf_exit_100_without_packages_remains_error() {
+        for backend in [Backend::Dnf, Backend::Yum] {
+            assert_eq!(
+                dnf_check_output(backend, 100, "Updating repositories:\n", "").unwrap_err(),
+                "DNF reported updates, but its package output could not be parsed"
+            );
+        }
+    }
+    #[test]
+    fn legacy_dnf_exit_zero_without_packages_is_success() {
+        for backend in [Backend::Dnf, Backend::Yum] {
+            assert!(dnf_check_output(backend, 0, "", "").unwrap().is_empty());
+        }
     }
     #[test]
     fn apt_parser_reads_available_and_installed_versions() {
