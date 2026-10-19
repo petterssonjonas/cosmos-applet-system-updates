@@ -888,7 +888,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmic-applet-system-updates"
+name = "cosmos-applet-system-updates"
 version = "0.1.0"
 dependencies = [
  "chrono",

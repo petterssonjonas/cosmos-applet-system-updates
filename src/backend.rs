@@ -508,7 +508,7 @@ fn display_text(text: &str, limit: usize) -> String {
 struct PrivateDirectory(PathBuf);
 impl PrivateDirectory {
     fn new() -> Result<Self, String> {
-        let template = std::env::temp_dir().join("cosmic-system-updates-XXXXXX");
+        let template = std::env::temp_dir().join("cosmos-applet-system-updates-XXXXXX");
         use std::os::unix::ffi::{OsStrExt, OsStringExt};
         let mut bytes = template.as_os_str().as_bytes().to_vec();
         bytes.push(0);
@@ -573,7 +573,7 @@ impl PersistentCache {
         }
         directory = cache_directory_at(
             &directory,
-            std::ffi::OsStr::new("cosmic-applet-system-updates"),
+            std::ffi::OsStr::new("cosmos-applet-system-updates"),
             true,
             uid,
         )?;
@@ -616,7 +616,7 @@ impl PersistentCache {
             });
         }
         Ok(Self {
-            path: base.join("cosmic-applet-system-updates").join(backend),
+            path: base.join("cosmos-applet-system-updates").join(backend),
             _lock: lock,
             _directory: directory,
         })
@@ -1599,7 +1599,7 @@ PRETTY_NAME="$(touch /tmp/never) `id` \"quoted\""
     fn persistent_cache_rejects_symlinked_application_directory() {
         let base = PrivateDirectory::new().unwrap();
         let elsewhere = PrivateDirectory::new().unwrap();
-        std::os::unix::fs::symlink(&elsewhere.0, base.0.join("cosmic-applet-system-updates"))
+        std::os::unix::fs::symlink(&elsewhere.0, base.0.join("cosmos-applet-system-updates"))
             .unwrap();
         assert!(PersistentCache::at(&base.0, "arch").is_err());
     }

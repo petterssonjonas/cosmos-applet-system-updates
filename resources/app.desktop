@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=System Updates
+Name=Cosmos System Updates
 Comment=Check system updates hourly and update safely in a terminal
 Type=Application
-Icon=io.github.cosmic-applet-system-updates-symbolic
-Exec=cosmic-applet-system-updates
+Icon=dev.jp.CosmosAppletSystemUpdates-symbolic
+Exec=cosmos-applet-system-updates
 Terminal=false
 StartupNotify=false
 Categories=System;PackageManager;

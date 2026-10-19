@@ -10,7 +10,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("System Updates: {error}");
+            eprintln!("Cosmos System Updates: {error}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -22,7 +22,7 @@ fn run() -> Result<(), String> {
         [] => cosmic::applet::run::<app::AppModel>(()).map_err(|error| error.to_string()),
         [arg] if arg == "--help" || arg == "-h" => {
             println!(
-                "COSMIC System Updates\n\nLaunch without arguments from the COSMIC panel.\n  --check                 Check for updates without installing anything\n  --run-updates BACKEND    Internal interactive terminal update runner\n  --help                  Show this help"
+                "Cosmos System Updates\n\nLaunch without arguments from the COSMIC panel.\n  --check                 Check for updates without installing anything\n  --run-updates BACKEND    Internal interactive terminal update runner\n  --help                  Show this help"
             );
             Ok(())
         }

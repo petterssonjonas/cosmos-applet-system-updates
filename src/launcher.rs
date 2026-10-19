@@ -395,7 +395,7 @@ impl RunnerLock {
             .truncate(false)
             .mode(0o600)
             .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-            .open(runtime.join("cosmic-applet-system-updates.lock"))
+            .open(runtime.join("cosmos-applet-system-updates.lock"))
             .map_err(|error| format!("Could not open the update lock: {error}"))?;
         let metadata = file
             .metadata()
@@ -411,7 +411,7 @@ impl RunnerLock {
         if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::WouldBlock {
-                return Err("Another System Updates terminal is already running. Finish or cancel it first.".into());
+                return Err("Another Cosmos System Updates terminal is already running. Finish or cancel it first.".into());
             }
             return Err(format!("Could not lock the update runner: {error}"));
         }
@@ -496,7 +496,7 @@ mod tests {
 
     fn runtime_directory() -> PathBuf {
         let directory = env::temp_dir().join(format!(
-            "cosmic-updates-lock-test-{}-{}",
+            "cosmos-applet-system-updates-lock-test-{}-{}",
             std::process::id(),
             DIRECTORY_ID.fetch_add(1, Ordering::Relaxed),
         ));
@@ -513,7 +513,7 @@ mod tests {
         drop(first);
         let second = RunnerLock::acquire_in(&directory).unwrap();
         drop(second);
-        fs::remove_file(directory.join("cosmic-applet-system-updates.lock")).unwrap();
+        fs::remove_file(directory.join("cosmos-applet-system-updates.lock")).unwrap();
         fs::remove_dir(directory).unwrap();
     }
 
@@ -522,10 +522,10 @@ mod tests {
         let directory = runtime_directory();
         let target = directory.join("target");
         fs::write(&target, "unchanged").unwrap();
-        symlink(&target, directory.join("cosmic-applet-system-updates.lock")).unwrap();
+        symlink(&target, directory.join("cosmos-applet-system-updates.lock")).unwrap();
         assert!(RunnerLock::acquire_in(&directory).is_err());
         assert_eq!(fs::read_to_string(&target).unwrap(), "unchanged");
-        fs::remove_file(directory.join("cosmic-applet-system-updates.lock")).unwrap();
+        fs::remove_file(directory.join("cosmos-applet-system-updates.lock")).unwrap();
         fs::remove_file(target).unwrap();
         fs::remove_dir(directory).unwrap();
     }

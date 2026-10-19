@@ -1,75 +1,114 @@
-# COSMIC System Updates
+# Cosmos System Updates
 
-A standalone COSMIC panel applet for distribution package updates. It checks at startup and every **60 minutes**, including while its dropdown is closed. **Check now** performs a manual check; opening the dropdown does not trigger another scan.
+Check distribution updates from the COSMIC panel. Show the package count, package list, and last successful check.
+Checks run at startup and every 60 minutes. Select **Check now** for a manual check.
+A failed check keeps the previous result marked as stale. It does not show a false zero count.
+Cosmos is independent of System76. COSMIC libraries and protocols keep their upstream names.
 
-The panel shows a distro-specific symbolic icon and the available update count. The dropdown lists package names, installed and available versions where the backend provides them, repository information, and the last successful check. Large results have a scrollable list with 30 packages per page. An unsuccessful refresh keeps the previous list explicitly marked as stale, never reports the failure as zero updates, and does not overlap another check. The timestamp is replaced by a spinner while a check is running.
+## Requirements
 
-**Update in terminal** opens an interactive terminal, displays the exact commands, and asks for confirmation before running them. System package operations use `sudo`; AUR helpers run as the desktop user and manage their own privilege elevation. No `-y` or `--noconfirm` flags are added. Ctrl+C stops subsequent commands. The terminal retains the completion or failure message until Enter is pressed. A per-user lock prevents overlapping update runners.
+Use Linux with a working COSMIC session, a supported package manager, and an interactive terminal such as COSMIC Terminal.
+Install native build packages for your distribution:
 
-## Supported backends
+```sh
+# Fedora
+sudo dnf install gcc gcc-c++ cmake git pkgconf-pkg-config just desktop-file-utils expat-devel fontconfig-devel freetype-devel libxkbcommon-devel wayland-devel
 
-Selection uses `/etc/os-release` (`/usr/lib/os-release` as fallback), `ID_LIKE`, available executables, and immutable-system detection. It does not pick a package manager merely because an unrelated executable is installed.
+# Debian 13 or newer
+sudo apt update
+sudo apt install build-essential cmake git pkgconf just desktop-file-utils libexpat1-dev libfontconfig-dev libfreetype-dev libxkbcommon-dev libwayland-dev
 
-| Distribution family | Background check | Interactive update |
-| --- | --- | --- |
-| Fedora, RHEL, Rocky, AlmaLinux, CentOS and related systems | Prefer DNF5, then DNF, then Yum; refresh metadata and query native updates | `sudo dnf5 upgrade --refresh`, corresponding DNF command, or Yum upgrade with expired metadata |
-| Debian, Ubuntu, Pop!_OS, Mint, elementary, Kali, Zorin and derivatives | APT refreshes signed metadata into a private list cache, then queries upgradable packages | `sudo apt-get update --error-on=any`, then `sudo apt-get dist-upgrade` |
-| Arch, Manjaro, EndeavourOS, Garuda, CachyOS and derivatives | `checkupdates` uses a separate database; prefer `paru`, then `yay` for additional AUR updates | `paru -Syu`, `yay -Syu`, or `sudo pacman -Syu` |
-| openSUSE/SUSE | Zypper refreshes a private host-state snapshot, then lists updates | Refresh repositories, then `sudo zypper dup` for Tumbleweed or `sudo zypper update` otherwise |
-| Fedora Atomic and compatible OSTree systems | Authorized, noninteractive `rpm-ostree upgrade --check`; reports actual available OS deployments | `sudo rpm-ostree upgrade`; reboot separately to apply the deployment |
-| Alpine | APK refreshes a private state snapshot and queries newer versions | `sudo apk update`, then interactive `apk upgrade` |
-| Void | XBPS in-memory metadata synchronization and dry-run update query | `sudo xbps-install -S -u` |
-| Solus | Official Python 3 `pisi` API refreshes metadata in a private state snapshot | `sudo eopkg update-repo`, then `sudo eopkg upgrade` |
+# Arch Linux: pacman-contrib supplies checkupdates; pacman supplies pacman-conf
+sudo pacman -Syu --needed base-devel cmake git pkgconf just desktop-file-utils expat fontconfig freetype2 libxkbcommon wayland pacman-contrib fakeroot
+```
 
-### Requirements and limitations
+The lists follow [libcosmic's native requirements](https://github.com/pop-os/libcosmic#dependencies) and distribution package metadata.
+They are package examples, not a claim that all three distributions were tested.
+Install current stable Rust with [rustup](https://rustup.rs), as your normal user. Distribution Rust can be too old.
+After rustup setup, open a new terminal and run:
 
-- **DNF5:** requires a version supporting JSON output for `check-update`. JSON mode can return exit status 0 even when updates exist, so the structured package data determines the result. Packages repeated in upgrades and obsoleting sections are counted once; nested obsoleted packages are not additional updates. Legacy DNF/Yum text checks retain their 0/100 consistency checks. DNF-family checks reuse the native configured user cache and its existing repository trust; they do not silently approve new signing keys. If a repository needs initial trust approval, the error explains how to review its fingerprint in an ordinary-user terminal metadata check. Signature verification is not disabled.
-- **APT:** requires `apt-get` with `--error-on=any` and `apt`. The private check clears update hooks so system maintenance hooks are not run from an unprivileged scan. Repository authentication remains enabled.
-- **Arch:** install `pacman-contrib` (`checkupdates`), `fakeroot`, and `pacman-conf`. The applet does not install these automatically or refresh the live pacman database without upgrading. AUR development-package checks follow the selected helper's configuration.
-- **Zypper/APK:** need readable package-manager configuration and installed-package state. Copies are bounded to 512 MiB and discarded after the scan. These private checks can require more I/O than managers with native nonroot metadata support.
-- **rpm-ostree:** background checking must already have permanent noninteractive polkit authorization. The applet does not request passwords, alter polkit rules, or reuse temporary authorization grants for background scans. Unavailable authorization produces an explicit error; the interactive terminal updater remains available. Deployment items are not claimed to be individual package updates.
-- **Solus:** needs `python3` and the installed `pisi` API. The CLI is not used for background refresh because it can invoke `pkexec`; the API is isolated to a private snapshot instead. No default repositories are invented or added.
-- **Unsupported systems:** SteamOS, unsupported transactional/declarative systems, and distributions without a supported backend are identified explicitly. The applet does not attempt mutable package upgrades on a managed read-only OS. NixOS, Gentoo and Mageia have artwork but no automated update backend here.
-- This applet manages the host's distribution updates. It does not include Flatpak, Snap, firmware updates, distro-release migrations, or automatic rebooting.
-- A failed repository refresh makes the check fail visibly rather than presenting an incomplete result as “up to date.” Subprocess output is bounded to 8 MiB per stream and each checking subprocess has a five-minute timeout. Update commands themselves are not subject to that timeout.
-- Only Fedora/DNF5 has been exercised against a live host during development. Other backends have deterministic parser/selection/command tests and need validation on their respective distributions.
-
-## Icons
-
-Includes **28 distro SVGs**: Fedora, Ubuntu, Arch, Debian, Pop!_OS, Mint, openSUSE, Manjaro, EndeavourOS, Garuda, CachyOS, Zorin, elementary, Kali, RHEL, Rocky, AlmaLinux, CentOS, Alpine, Void, Solus, NixOS, Gentoo, Mageia, Fedora Atomic, Bazzite, Bluefin and Aurora. Related variants share their family's artwork. Unknown derivatives use the first recognized `ID_LIKE` family; entirely unknown systems use a generic update icon.
-
-The SVGs are embedded and require no special fonts. Fedora uses the recognizable blue badge and white Fedora mark from [System76's Pop icon theme](https://github.com/pop-os/icon-theme), retaining its original colors rather than applying symbolic recoloring. `resources/icons/fedora.svg` is the unmodified 24-pixel `fedora-logo-icon.svg` artwork, distributed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) by the Pop icon theme contributors; [upstream license](https://github.com/pop-os/icon-theme/blob/master/LICENSE). Fedora's name and logo remain trademarks of their respective owners; no endorsement is implied. The other 27 icons are original distro-inspired symbolic artwork using native theme tinting. An icon identifies the distribution; it does not imply that every distribution's update mechanism is supported.
+```sh
+rustup update stable
+rustup default stable
+```
 
 ## Build and install
 
-Requires Rust, `just`, `desktop-file-utils`, and libcosmic's native Wayland/font/graphics development dependencies.
+Use `sudo` only for package prerequisites above, never for these build or install commands:
 
 ```sh
+git clone https://github.com/petterssonjonas/cosmos-applet-system-updates
+cd cosmos-applet-system-updates
 just build-release
 just install
 ```
 
-The install recipe puts the executable, desktop registration and generic icon under `~/.local`. It respects `CARGO_TARGET_DIR`; use the same value for build and install when sharing a target directory.
+Build and install are separate. Installation uses the existing release build.
+The executable goes to `~/.local/bin/cosmos-applet-system-updates`. The desktop entry and icon go to `~/.local/share`.
+The desktop entry uses an absolute executable path. Keep `CARGO_TARGET_DIR` the same for both commands if you set it.
+In a development container, use your host-mapped normal user, not root.
 
-Add **System Updates** through **COSMIC Settings → Desktop → Panel → Applets**. Installation does not alter the panel configuration or other applets.
+Open **COSMIC Settings → Desktop → Panel → Configure panel applets**.
+Add **Cosmos System Updates** (`dev.jp.CosmosAppletSystemUpdates`). Remove and add it again after an upgrade.
+Installation does not change the panel layout.
 
-```sh
-cargo test --locked
-cargo clippy --all-targets --locked -- -D warnings
-cosmic-applet-system-updates --check
-```
+## Updates and authorization
 
-`--check` performs a real, non-installing metadata check and prints the result. An error returns a nonzero exit status. The internal `--run-updates BACKEND` mode refuses noninteractive input or execution as root; only the package commands inside the ordinary-user terminal invoke sudo.
+**Update in terminal** shows the exact commands and asks for confirmation.
+System updates use `sudo` at runtime. AUR helpers run as the normal user and manage their own authorization.
+This is separate from the unprivileged applet installation. No automatic confirmation flags are added.
+Press Ctrl+C to stop subsequent commands. A per-user lock prevents overlapping update runners.
 
-Supported terminal preference: COSMIC Terminal, GNOME Console, GNOME Terminal, Konsole, Xfce Terminal, kitty, Alacritty, then xterm. A missing terminal produces an actionable error. Panel-private sockets and variables are removed from the terminal child's environment.
+Backend selection uses distribution identity and immutable-system detection, not merely installed command names.
 
-## Local data and privacy
+| System | Backend and runtime needs |
+| --- | --- |
+| Fedora and related mutable systems | DNF5, DNF, or Yum. DNF5 must support JSON `check-update` output. |
+| Debian and related systems | `apt` and `apt-get` with `--error-on=any`. Checks use private signed metadata. Updates run `apt-get update`, then `dist-upgrade`. |
+| Arch and related systems | `checkupdates`, `fakeroot`, and `pacman-conf`. Optional `paru`, then `yay`, adds AUR checks and updates. |
+| openSUSE/SUSE | Zypper. Tumbleweed uses `dup`; other supported variants use `update`. |
+| Fedora Atomic and compatible OSTree systems | rpm-ostree. Background checks need existing permanent noninteractive Polkit authorization. Reboot separately to apply updates. |
+| Alpine | APK with readable configuration and installed state. |
+| Void | XBPS with metadata synchronization and a dry-run query. |
+| Solus | `python3` and the installed `pisi` API for checks; eopkg for interactive updates. |
 
-- No accounts, credentials, telemetry, or applet daemon are required.
-- Checks contact the repositories already configured on the machine, plus AUR through an installed helper where selected.
-- DNF-family metadata and approved repository keys remain in the native package manager's configured user cache.
-- APT/Arch metadata and per-backend check locks live under `$XDG_CACHE_HOME/cosmic-applet-system-updates`, defaulting to `~/.cache/cosmic-applet-system-updates`. Native metadata is retained between checks to allow conditional downloads instead of fetching every index from scratch each hour.
-- Zypper, APK and eopkg private snapshots are temporary. Update-runner locking uses the private user runtime directory. No packages are downloaded or installed by the applet's checking code.
-- Update results remain in memory. Restarting the applet performs a fresh check.
+Background checks do not ask for passwords, change Polkit rules, install packages, or approve new repository keys.
+If a repository needs initial trust approval, review its fingerprint with the normal package-manager workflow.
+The applet never disables signature verification. Failed repository refreshes produce an error, not an incomplete success.
+Zypper/APK checks copy private state snapshots, limited to 512 MiB. Each checking subprocess has a five-minute timeout.
 
-Code and original artwork: MPL-2.0; see `LICENSE`. The bundled Fedora logo is separately licensed CC BY-SA 4.0, as attributed above.
+Flatpak, Snap, firmware, distribution-release migrations, and automatic reboots are not included.
+Unsupported systems, including SteamOS and unsupported declarative/transactional systems, receive no mutable upgrade commands.
+Artwork alone does not mean that a distribution has a supported backend.
+Only Fedora/DNF5 has been exercised against a live host during development. Other backends need validation on their distributions.
+
+## Local data and migration
+
+Checks contact configured repositories and, when selected, AUR through an installed helper. No accounts or telemetry are required.
+APT/Arch metadata uses `~/.cache/cosmos-applet-system-updates`, or the corresponding `$XDG_CACHE_HOME` directory.
+DNF retains its native user cache and repository trust. Results remain in memory. Temporary backend snapshots are discarded.
+
+To migrate, stop the old applet and finish or cancel all old update terminals first. Do not run both versions together: their locks differ.
+Before the new applet creates its cache, run `just migrate`.
+It copies `~/.cache/cosmic-applet-system-updates` to `~/.cache/cosmos-applet-system-updates`, following `$XDG_CACHE_HOME` when set.
+Migration keeps the source, refuses an existing destination, and rejects symlinks or untrusted paths. It does not copy runtime locks.
+There are no settings or credentials to migrate. The new applet has no old-name runtime fallback.
+
+Replace the old **System Updates** panel entry with **Cosmos System Updates**.
+Remove legacy files separately under the old prefix: `bin/cosmic-applet-system-updates`,
+`share/applications/io.github.cosmic-applet-system-updates.desktop`, and
+`share/icons/hicolor/scalable/apps/io.github.cosmic-applet-system-updates-symbolic.svg`.
+
+## Uninstall
+
+Remove the applet from the panel. Run `just uninstall` from this source directory, without `sudo`.
+Uninstall keeps cached metadata and does not remove legacy files or change package-manager state.
+
+## License and attribution
+
+Code and original artwork: MPL-2.0; see `LICENSE`.
+Built with [libcosmic](https://github.com/pop-os/libcosmic) and the [COSMIC applet template](https://github.com/pop-os/cosmic-applet-template).
+`resources/icons/fedora.svg` is the unmodified 24-pixel `fedora-logo-icon.svg` from the
+[Pop icon theme](https://github.com/pop-os/icon-theme), by its contributors, under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); see its [upstream license](https://github.com/pop-os/icon-theme/blob/master/LICENSE).
+Other distribution icons are original distro-inspired artwork. Distribution names and logos remain their owners' trademarks. No endorsement is implied.

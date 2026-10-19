@@ -164,7 +164,7 @@ impl cosmic::Application for AppModel {
     type Executor = cosmic::executor::Default;
     type Flags = ();
     type Message = Message;
-    const APP_ID: &'static str = "io.github.cosmic-applet-system-updates";
+    const APP_ID: &'static str = "dev.jp.CosmosAppletSystemUpdates";
 
     fn core(&self) -> &cosmic::Core {
         &self.core
@@ -247,7 +247,7 @@ impl cosmic::Application for AppModel {
         let header = widget::row([
             widget::icon(self.icon.clone()).size(36).into(),
             widget::column([
-                widget::text::title3("System Updates").into(),
+                widget::text::title3("Cosmos System Updates").into(),
                 widget::text(distro).size(13).into(),
                 widget::text(backend).size(11).into(),
             ])
